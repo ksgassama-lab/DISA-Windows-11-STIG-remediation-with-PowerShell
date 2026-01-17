@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    This PowerShell script disables Windows Installer elevated privileges to prevent
+    Disables Windows Installer elevated privileges to prevent
     standard users from gaining administrative rights during application installation.
 
 .NOTES
@@ -9,7 +9,7 @@
     GitHub          : https://github.com/ksgassama-lab
     Date Created    : 2026-01-16
     Last Modified   : 2026-01-16
-    Version         : 1.0
+    Version         : 1.1
     CVEs            : N/A
     Plugin IDs      : N/A
     STIG-ID         : WN11-CC-000315
@@ -21,7 +21,7 @@
     PowerShell Ver. : 5.1
 
 .USAGE
-    Run this script with administrative privileges.
+    Run this script in an elevated PowerShell session.
 
     Example:
     PS C:\> .\WN11-CC-000315-Disable-AlwaysInstallWithElevatedPrivileges.ps1
@@ -38,56 +38,50 @@ $DesiredValue = 0
 # =========================
 # CHECK FOR ADMIN RIGHTS
 # =========================
-If (-not ([Security.Principal.WindowsPrincipal] `
-    [Security.Principal.WindowsIdentity]::GetCurrent()
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-
-    Write-Error "This script must be run with administrative privileges."
+    Write-Error "This script must be run as Administrator."
     Exit 1
 }
 
 # =========================
 # REMEDIATION FUNCTION
 # =========================
-Function Set-InstallerPolicy {
-    Param (
-        [Parameter(Mandatory)]
-        [string]$RegistryPath
-    )
+Function Set-AlwaysInstallElevated {
+    Param ([string]$RegistryPath)
 
+    # Create registry key if it doesn't exist
     If (-not (Test-Path $RegistryPath)) {
         New-Item -Path $RegistryPath -Force | Out-Null
+        Write-Host "Created registry key: $RegistryPath"
     }
 
-    Set-ItemProperty -Path $RegistryPath `
-                     -Name $ValueName `
-                     -Value $DesiredValue `
-                     -Type DWord
+    # Set policy value
+    Set-ItemProperty -Path $RegistryPath -Name $ValueName -Value $DesiredValue -Type DWord
+    Write-Host "Set $ValueName = $DesiredValue at $RegistryPath"
 }
 
 # =========================
 # APPLY REMEDIATION
 # =========================
-Write-Host "Applying STIG remediation for WN11-CC-000315..."
-
-Set-InstallerPolicy -RegistryPath $HKLMPath
-Set-InstallerPolicy -RegistryPath $HKCUPath
-
-Write-Host "Policy successfully configured."
+Write-Host "`nApplying STIG remediation for WN11-CC-000315..."
+Set-AlwaysInstallElevated -RegistryPath $HKLMPath
+Set-AlwaysInstallElevated -RegistryPath $HKCUPath
 
 # =========================
 # VALIDATION
 # =========================
-$HKLMValue = Get-ItemProperty -Path $HKLMPath -Name $ValueName -ErrorAction SilentlyContinue
-$HKCUValue = Get-ItemProperty -Path $HKCUPath -Name $ValueName -ErrorAction SilentlyContinue
+$HKLMValue = (Get-ItemProperty -Path $HKLMPath -Name $ValueName -ErrorAction SilentlyContinue).$ValueName
+$HKCUValue = (Get-ItemProperty -Path $HKCUPath -Name $ValueName -ErrorAction SilentlyContinue).$ValueName
 
-Write-Host "HKLM AlwaysInstallElevated: $($HKLMValue.$ValueName)"
-Write-Host "HKCU AlwaysInstallElevated: $($HKCUValue.$ValueName)"
+Write-Host "`nValidation results:"
+Write-Host "HKLM AlwaysInstallElevated: $HKLMValue"
+Write-Host "HKCU AlwaysInstallElevated: $HKCUValue"
 
-If (($HKLMValue.$ValueName -eq 0) -and ($HKCUValue.$ValueName -eq 0)) {
-    Write-Host "COMPLIANT: STIG WN11-CC-000315 successfully enforced."
+If (($HKLMValue -eq 0) -and ($HKCUValue -eq 0)) {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-CC-000315 successfully enforced."
     Exit 0
 } Else {
-    Write-Error "NON-COMPLIANT: STIG WN11-CC-000315 not correctly configured."
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-CC-000315 not correctly configured."
     Exit 2
 }
