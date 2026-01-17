@@ -1,0 +1,75 @@
+<#
+.SYNOPSIS
+    Configures Windows 11 to enforce Account Lockout Threshold for failed logon attempts.
+
+.DESCRIPTION
+    This PowerShell script sets the account lockout threshold to 3 invalid logon attempts.
+    This setting is required to comply with DISA Windows 11 STIG WN11-AC-000010 and 
+    protects against brute-force password attacks.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-17
+    Last Modified   : 2026-01-17
+    Version         : 1.0
+    STIG-ID         : WN11-AC-000010
+
+.TESTED ON
+    Date(s) Tested  : 01/17/2026
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1.26100.7462
+
+.USAGE
+    Run this script in an elevated PowerShell session.
+    Example syntax:
+    PS C:\> .\Win11_AC_000010_SetLockoutThreshold.ps1
+#>
+
+# -------------------------------------------------
+# Step 0: Ensure script is running as Administrator
+# -------------------------------------------------
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    Exit 1
+}
+
+Write-Host "`n[INFO] Applying STIG WN11-AC-000010 - Account Lockout Threshold" -ForegroundColor Cyan
+
+# -------------------------------------------------
+# Step 1: Define settings
+# -------------------------------------------------
+$LockoutThreshold = 3
+
+# -------------------------------------------------
+# Step 2: Check current configuration
+# -------------------------------------------------
+$CurrentThreshold = (net accounts | Select-String "Lockout threshold").ToString() -replace '.*:\s*',''
+Write-Host "[INFO] Current Account Lockout Threshold: $CurrentThreshold"
+
+# -------------------------------------------------
+# Step 3: Apply remediation
+# -------------------------------------------------
+Write-Host "[INFO] Setting Account Lockout Threshold to $LockoutThreshold..." -ForegroundColor Yellow
+net accounts /lockoutthreshold:$LockoutThreshold | Out-Null
+Write-Host "[INFO] Account Lockout Threshold configured." -ForegroundColor Green
+
+# -------------------------------------------------
+# Step 4: Validate configuration
+# -------------------------------------------------
+$UpdatedThreshold = (net accounts | Select-String "Lockout threshold").ToString() -replace '.*:\s*',''
+Write-Host "`n[INFO] Validation result:" -ForegroundColor Cyan
+Write-Host "Account Lockout Threshold = $UpdatedThreshold"
+
+if ($UpdatedThreshold -le $LockoutThreshold) {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-AC-000010 successfully enforced." -ForegroundColor Green
+    Exit 0
+} else {
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-AC-000010 not correctly configured."
+    Exit 2
+}
+
+Write-Host "[INFO] STIG WN11-AC-000010 remediation completed." -ForegroundColor Cyan
