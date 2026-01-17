@@ -1,1 +1,89 @@
 
+<#
+.SYNOPSIS
+    Configures Windows 11 to audit Other Logon/Logoff Events successes.
+
+.DESCRIPTION
+    This PowerShell script configures the Windows 11 system to ensure
+    that all successful "Other Logon/Logoff Events" are audited.
+
+    This setting is required to comply with DISA Windows 11 STIG
+    WN11-AU-000560 and helps improve security monitoring by logging
+    user session activity beyond standard logon/logoff events.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-16
+    Last Modified   : 2026-01-16
+    Version         : 1.1
+    STIG-ID         : WN11-AU-000560
+
+.TESTED ON
+    Date(s) Tested  : 01/16/2026
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1.26100.7462
+
+.USAGE
+    Run this script in an elevated PowerShell session.
+    Example syntax:
+    PS C:\> .\Win11_AU_000560_AuditOtherLogon.ps1
+#>
+
+# -------------------------------------------------
+# Step 0: Ensure script is running as Administrator
+# -------------------------------------------------
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    Exit 1
+}
+
+Write-Host "`n[INFO] Applying STIG WN11-AU-000560 - Audit Other Logon/Logoff Events (Success)" -ForegroundColor Cyan
+
+# -------------------------------------------------
+# Step 1: Check current audit setting
+# -------------------------------------------------
+$currentSetting = AuditPol /get /subcategory:"Other Logon/Logoff Events" | Out-String
+Write-Host "[INFO] Current AuditPol setting:`n$currentSetting"
+
+# -------------------------------------------------
+# Step 2: Enable Success auditing if not already set
+# -------------------------------------------------
+if ($currentSetting -notmatch "Success") {
+    Write-Host "[INFO] Success auditing not enabled. Enabling now..." -ForegroundColor Yellow
+    AuditPol /set /subcategory:"Other Logon/Logoff Events" /success:enable
+    Write-Host "[INFO] Audit policy updated." -ForegroundColor Green
+} else {
+    Write-Host "[INFO] Success auditing is already enabled. No changes needed." -ForegroundColor Green
+}
+
+# -------------------------------------------------
+# Step 3: Force audit subcategory override (optional but recommended)
+# -------------------------------------------------
+Write-Host "`n[INFO] Ensuring audit subcategory override is enabled..." -ForegroundColor Cyan
+$cfgPath = "$env:TEMP\secpol.cfg"
+secedit /export /cfg $cfgPath | Out-Null
+
+(Get-Content $cfgPath) -replace "Audit: Force audit policy subcategory settings to override audit policy category settings = 0","Audit: Force audit policy subcategory settings to override audit policy category settings = 1" | Set-Content $cfgPath
+
+secedit /configure /db "$env:windir\Security\Local.sdb" /cfg $cfgPath /overwrite | Out-Null
+Write-Host "[INFO] Audit subcategory override enforced." -ForegroundColor Green
+
+# -------------------------------------------------
+# Step 4: Validate configuration
+# -------------------------------------------------
+$updatedSetting = AuditPol /get /subcategory:"Other Logon/Logoff Events" | Out-String
+Write-Host "`n[INFO] Validation result:`n$updatedSetting"
+
+if ($updatedSetting -match "Success") {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-AU-000560 successfully enforced." -ForegroundColor Green
+    Exit 0
+} else {
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-AU-000560 not correctly configured."
+    Exit 2
+}
+
+Write-Host "[INFO] STIG WN11-AU-000560 remediation completed." -ForegroundColor Cyan
