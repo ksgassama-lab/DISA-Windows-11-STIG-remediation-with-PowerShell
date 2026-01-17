@@ -1,0 +1,88 @@
+<#
+.SYNOPSIS
+    Configures Windows 11 to audit Detailed Tracking - Process Creation successes.
+
+.DESCRIPTION
+    This PowerShell script ensures that all successful "Process Creation" events
+    are audited on Windows 11 systems.
+
+    This setting is required to comply with DISA Windows 11 STIG WN11-AU-000050 
+    and helps improve security monitoring by logging process creation events, 
+    which are critical for detecting malware, suspicious scripts, and privilege escalation.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-16
+    Last Modified   : 2026-01-16
+    Version         : 1.1
+    STIG-ID         : WN11-AU-000050
+
+.TESTED ON
+    Date(s) Tested  : 01/16/2026
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1.26100.7462
+
+.USAGE
+    Run this script in an elevated PowerShell session.
+    Example syntax:
+    PS C:\> .\Win11_AU_000050_AuditProcessCreation.ps1
+#>
+
+# -------------------------------------------------
+# Step 0: Ensure script is running as Administrator
+# -------------------------------------------------
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    Exit 1
+}
+
+Write-Host "`n[INFO] Applying STIG WN11-AU-000050 - Audit Process Creation Success" -ForegroundColor Cyan
+
+# -------------------------------------------------
+# Step 1: Check current audit setting
+# -------------------------------------------------
+$currentSetting = AuditPol /get /subcategory:"Process Creation" | Out-String
+Write-Host "[INFO] Current AuditPol setting for Process Creation:`n$currentSetting"
+
+# -------------------------------------------------
+# Step 2: Enable Success auditing if not already set
+# -------------------------------------------------
+if ($currentSetting -notmatch "Success") {
+    Write-Host "[INFO] Success auditing not enabled. Enabling now..." -ForegroundColor Yellow
+    AuditPol /set /subcategory:"Process Creation" /success:enable
+    Write-Host "[INFO] Audit policy updated." -ForegroundColor Green
+} else {
+    Write-Host "[INFO] Success auditing is already enabled. No changes needed." -ForegroundColor Green
+}
+
+# -------------------------------------------------
+# Step 3: Force audit subcategory override (recommended)
+# -------------------------------------------------
+Write-Host "`n[INFO] Ensuring audit subcategory override is enabled..." -ForegroundColor Cyan
+$cfgPath = "$env:TEMP\secpol.cfg"
+secedit /export /cfg $cfgPath | Out-Null
+
+(Get-Content $cfgPath) -replace "Audit: Force audit policy subcategory settings to override audit policy category settings\s*=\s*0","Audit: Force audit policy subcategory settings to override audit policy category settings = 1" | Set-Content $cfgPath
+
+secedit /configure /db "$env:windir\Security\Local.sdb" /cfg $cfgPath /overwrite | Out-Null
+Write-Host "[INFO] Audit subcategory override enforced." -ForegroundColor Green
+
+# -------------------------------------------------
+# Step 4: Validate configuration
+# -------------------------------------------------
+$updatedSetting = AuditPol /get /subcategory:"Process Creation" | Out-String
+Write-Host "`n[INFO] Validation result for Process Creation:`n$updatedSetting"
+
+if ($updatedSetting -match "Success") {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-AU-000050 successfully enforced." -ForegroundColor Green
+    Exit 0
+} else {
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-AU-000050 not correctly configured."
+    Exit 2
+}
+
+Write-Host "[INFO] STIG WN11-AU-000050 remediation completed." -ForegroundColor Cyan
