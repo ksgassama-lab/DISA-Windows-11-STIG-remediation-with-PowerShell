@@ -1,0 +1,90 @@
+<#
+.SYNOPSIS
+    Group Policy objects must be reprocessed even if they have not changed.
+
+.DESCRIPTION
+    This PowerShell script configures the Windows 11 system to ensure
+    Group Policy objects are reprocessed even if they have not changed.
+
+    This setting is required to comply with DISA Windows 11 STIG
+    WN11-CC-000090 and helps prevent configuration drift by ensuring
+    policies are applied consistently, even when no changes are detected.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-16
+    Last Modified   : 2026-01-16
+    Version         : 1.1
+    STIG-ID         : WN11-CC-000090
+
+.TESTED ON
+    Date(s) Tested  : 01/16/2026
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1.26100.7462
+
+.USAGE
+    Run this script in an elevated PowerShell session.
+    Example syntax:
+    PS C:\> .\Win11_CC_000090_GPOReprocessing.ps1
+#>
+
+# -------------------------------------------------
+# Step 0: Ensure script is running as Administrator
+# -------------------------------------------------
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    Exit 1
+}
+
+Write-Host "`n[INFO] Applying STIG WN11-CC-000090 - Force GPO Reprocessing" -ForegroundColor Cyan
+
+# -------------------------------------------------
+# Step 1: Set variables
+# -------------------------------------------------
+$RegistryPath = "HKLM:\Software\Policies\Microsoft\Windows\System\GroupPolicy"
+$ValueName    = "NoGPOListChanges"
+$DesiredValue = 0  # 0 = Process GPOs even if unchanged
+
+# -------------------------------------------------
+# Step 2: Remediation function
+# -------------------------------------------------
+Function Set-GPOReprocessing {
+    Param ([string]$RegistryPath)
+
+    # Create registry key if it doesn't exist
+    If (-not (Test-Path $RegistryPath)) {
+        New-Item -Path $RegistryPath -Force | Out-Null
+        Write-Host "[INFO] Created registry key: $RegistryPath" -ForegroundColor Cyan
+    }
+
+    # Set policy value
+    Set-ItemProperty -Path $RegistryPath -Name $ValueName -Value $DesiredValue -Type DWord
+    Write-Host "[INFO] Set $ValueName = $DesiredValue at $RegistryPath" -ForegroundColor Cyan
+}
+
+# -------------------------------------------------
+# Step 3: Apply remediation
+# -------------------------------------------------
+Set-GPOReprocessing -RegistryPath $RegistryPath
+
+# -------------------------------------------------
+# Step 4: Validate configuration
+# -------------------------------------------------
+$CurrentValue = (Get-ItemProperty -Path $RegistryPath -Name $ValueName -ErrorAction SilentlyContinue).$ValueName
+
+Write-Host "`n[INFO] Validation result:"
+Write-Host "$ValueName: $CurrentValue"
+
+If ($CurrentValue -eq $DesiredValue) {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-CC-000090 successfully enforced." -ForegroundColor Green
+    Exit 0
+} Else {
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-CC-000090 not correctly configured."
+    Exit 2
+}
+
+Write-Host "[INFO] STIG WN11-CC-000090 remediation completed." -ForegroundColor Cyan
