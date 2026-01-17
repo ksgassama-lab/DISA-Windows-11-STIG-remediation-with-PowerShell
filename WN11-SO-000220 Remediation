@@ -1,0 +1,79 @@
+<#
+.SYNOPSIS
+    Configures Windows 11 to enforce minimum session security for NTLM SSP based servers.
+
+.DESCRIPTION
+    This PowerShell script ensures that the system enforces the minimum NTLM session 
+    security required for SSP servers (NTLMv2 and 128-bit encryption), 
+    complying with DISA Windows 11 STIG WN11-SO-000220.
+
+    This setting is critical to prevent weaker NTLM authentication and 
+    ensure secure communication with NTLM SSP based servers.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-16
+    Last Modified   : 2026-01-16
+    Version         : 1.0
+    STIG-ID         : WN11-SO-000220
+
+.TESTED ON
+    Date(s) Tested  : 01/16/2026
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1.26100.7462
+
+.USAGE
+    Run this script in an elevated PowerShell session.
+    Example syntax:
+    PS C:\> .\Win11_SO_000220_EnforceNTLMMinSessionSec.ps1
+#>
+
+# -------------------------------------------------
+# Step 0: Ensure script is running as Administrator
+# -------------------------------------------------
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    Exit 1
+}
+
+Write-Host "`n[INFO] Applying STIG WN11-SO-000220 - Minimum NTLM SSP Session Security" -ForegroundColor Cyan
+
+# -------------------------------------------------
+# Step 1: Check current NTLM minimum session security for servers
+# -------------------------------------------------
+$currentValue = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0" -Name "NtlmMinServerSec" | Select-Object -ExpandProperty NtlmMinServerSec
+Write-Host "[INFO] Current NtlmMinServerSec value: $currentValue"
+
+# Desired value = 0xA0000000 (Require NTLMv2 + 128-bit encryption)
+$desiredValue = 0xA0000000
+
+# -------------------------------------------------
+# Step 2: Apply configuration if non-compliant
+# -------------------------------------------------
+if ($currentValue -ne $desiredValue) {
+    Write-Host "[INFO] System is non-compliant. Updating NtlmMinServerSec to 0xA0000000..." -ForegroundColor Yellow
+    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0" -Name "NtlmMinServerSec" -Value $desiredValue
+    Write-Host "[INFO] NtlmMinServerSec updated." -ForegroundColor Green
+} else {
+    Write-Host "[INFO] System already compliant. No changes needed." -ForegroundColor Green
+}
+
+# -------------------------------------------------
+# Step 3: Validation
+# -------------------------------------------------
+$updatedValue = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0" -Name "NtlmMinServerSec" | Select-Object -ExpandProperty NtlmMinServerSec
+Write-Host "`n[INFO] Validating NtlmMinServerSec value: $updatedValue"
+
+if ($updatedValue -eq $desiredValue) {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-SO-000220 successfully enforced." -ForegroundColor Green
+    Exit 0
+} else {
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-SO-000220 not correctly configured."
+    Exit 2
+}
+
+Write-Host "[INFO] STIG WN11-SO-000220 remediation completed." -ForegroundColor Cyan
