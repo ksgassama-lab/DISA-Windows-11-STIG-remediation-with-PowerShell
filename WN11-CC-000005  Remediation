@@ -1,0 +1,87 @@
+<#
+.SYNOPSIS
+    Disables camera access from the Windows 11 lock screen.
+
+.DESCRIPTION
+    This PowerShell script enforces the policy to disable camera access
+    on the lock screen by setting the appropriate registry key.
+
+    This setting is required to comply with DISA Windows 11 STIG WN11-CC-000005
+    and prevents unauthorized access to the camera before a user logs in.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-17
+    Last Modified   : 2026-01-17
+    Version         : 1.0
+    STIG-ID         : WN11-CC-000005
+
+.TESTED ON
+    Date(s) Tested  : 01/17/2026
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1
+
+.USAGE
+    Run this script in an elevated PowerShell session.
+
+    Example:
+    PS C:\> .\WN11-CC-000005-Disable-LockScreenCamera.ps1
+#>
+
+# =========================
+# VARIABLES
+# =========================
+$RegPath     = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization"
+$ValueName   = "NoLockScreenCamera"
+$DesiredValue = 1
+
+# =========================
+# CHECK FOR ADMIN RIGHTS
+# =========================
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    Exit 1
+}
+
+# =========================
+# REMEDIATION FUNCTION
+# =========================
+Function Set-LockScreenCamera {
+    Param ([string]$RegistryPath)
+
+    # Create registry key if it doesn't exist
+    If (-not (Test-Path $RegistryPath)) {
+        New-Item -Path $RegistryPath -Force | Out-Null
+        Write-Host "Created registry key: $RegistryPath"
+    }
+
+    # Set policy value
+    Set-ItemProperty -Path $RegistryPath -Name $ValueName -Value $DesiredValue -Type DWord
+    Write-Host "Set $ValueName = $DesiredValue at $RegistryPath"
+}
+
+# =========================
+# APPLY REMEDIATION
+# =========================
+Write-Host "`nApplying STIG remediation for WN11-CC-000005..."
+Set-LockScreenCamera -RegistryPath $RegPath
+
+# =========================
+# VALIDATION
+# =========================
+$CurrentValue = (Get-ItemProperty -Path $RegPath -Name $ValueName -ErrorAction SilentlyContinue).$ValueName
+
+Write-Host "`nValidation result:"
+Write-Host "NoLockScreenCamera: $CurrentValue"
+
+If ($CurrentValue -eq $DesiredValue) {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-CC-000005 successfully enforced."
+    Exit 0
+} Else {
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-CC-000005 not correctly configured."
+    Exit 2
+}
