@@ -1,0 +1,93 @@
+<#
+.SYNOPSIS
+    This PowerShell script disables Windows Installer elevated privileges to prevent
+    standard users from gaining administrative rights during application installation.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-16
+    Last Modified   : 2026-01-16
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-CC-000315
+
+.TESTED ON
+    Date(s) Tested  : 2026-01-16
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1
+
+.USAGE
+    Run this script with administrative privileges.
+
+    Example:
+    PS C:\> .\WN11-CC-000315-Disable-AlwaysInstallWithElevatedPrivileges.ps1
+#>
+
+# =========================
+# VARIABLES
+# =========================
+$HKLMPath     = "HKLM:\Software\Policies\Microsoft\Windows\Installer"
+$HKCUPath     = "HKCU:\Software\Policies\Microsoft\Windows\Installer"
+$ValueName    = "AlwaysInstallElevated"
+$DesiredValue = 0
+
+# =========================
+# CHECK FOR ADMIN RIGHTS
+# =========================
+If (-not ([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+
+    Write-Error "This script must be run with administrative privileges."
+    Exit 1
+}
+
+# =========================
+# REMEDIATION FUNCTION
+# =========================
+Function Set-InstallerPolicy {
+    Param (
+        [Parameter(Mandatory)]
+        [string]$RegistryPath
+    )
+
+    If (-not (Test-Path $RegistryPath)) {
+        New-Item -Path $RegistryPath -Force | Out-Null
+    }
+
+    Set-ItemProperty -Path $RegistryPath `
+                     -Name $ValueName `
+                     -Value $DesiredValue `
+                     -Type DWord
+}
+
+# =========================
+# APPLY REMEDIATION
+# =========================
+Write-Host "Applying STIG remediation for WN11-CC-000315..."
+
+Set-InstallerPolicy -RegistryPath $HKLMPath
+Set-InstallerPolicy -RegistryPath $HKCUPath
+
+Write-Host "Policy successfully configured."
+
+# =========================
+# VALIDATION
+# =========================
+$HKLMValue = Get-ItemProperty -Path $HKLMPath -Name $ValueName -ErrorAction SilentlyContinue
+$HKCUValue = Get-ItemProperty -Path $HKCUPath -Name $ValueName -ErrorAction SilentlyContinue
+
+Write-Host "HKLM AlwaysInstallElevated: $($HKLMValue.$ValueName)"
+Write-Host "HKCU AlwaysInstallElevated: $($HKCUValue.$ValueName)"
+
+If (($HKLMValue.$ValueName -eq 0) -and ($HKCUValue.$ValueName -eq 0)) {
+    Write-Host "COMPLIANT: STIG WN11-CC-000315 successfully enforced."
+    Exit 0
+} Else {
+    Write-Error "NON-COMPLIANT: STIG WN11-CC-000315 not correctly configured."
+    Exit 2
+}
