@@ -1,0 +1,98 @@
+<#
+.SYNOPSIS
+    Configures Windows 11 to require a hardware security device for Windows Hello for Business.
+
+.DESCRIPTION
+    This PowerShell script enforces the use of a hardware-backed security device
+    (such as a TPM) with Windows Hello for Business by configuring the required
+    registry policy setting.
+
+    This setting is required to comply with DISA Windows 11 STIG WN11-CC-000255
+    and ensures that authentication keys used by Windows Hello for Business
+    are protected by hardware rather than software-only storage.
+
+.NOTES
+    Author          : Kaddy
+    LinkedIn        : https://www.linkedin.com/in/kaddygassama/
+    GitHub          : https://github.com/ksgassama-lab
+    Date Created    : 2026-01-16
+    Last Modified   : 2026-01-17
+    Version         : 1.2
+    STIG-ID         : WN11-CC-000255
+
+.TESTED ON
+    Date(s) Tested  : 01/17/2026
+    Tested By       : Kaddy
+    Systems Tested  : Windows 11 Enterprise
+    PowerShell Ver. : 5.1.26100.7462
+
+.USAGE
+    Run this script in an elevated PowerShell session.
+    Example syntax:
+    PS C:\> .\Win11_CC_000255_RequireHardwareWHfB.ps1
+#>
+
+# -------------------------------------------------
+# Step 0: Ensure script is running as Administrator
+# -------------------------------------------------
+If (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    Exit 1
+}
+
+Write-Host "`n[INFO] Applying STIG WN11-CC-000255 - Require Hardware Security Device for WHfB" -ForegroundColor Cyan
+
+# -------------------------------------------------
+# Step 1: Define registry values
+# -------------------------------------------------
+$RegPath   = "HKLM:\SOFTWARE\Policies\Microsoft\PassportForWork"
+$ValueName = "RequireSecurityDevice"
+$ValueData = 1
+
+# -------------------------------------------------
+# Step 2: Check current configuration
+# -------------------------------------------------
+if (Test-Path $RegPath) {
+    $CurrentValue = Get-ItemProperty -Path $RegPath -Name $ValueName -ErrorAction SilentlyContinue
+    Write-Host "[INFO] Current RequireSecurityDevice value: $($CurrentValue.$ValueName)"
+} else {
+    Write-Host "[INFO] PassportForWork registry path does not exist." -ForegroundColor Yellow
+}
+
+# -------------------------------------------------
+# Step 3: Apply remediation
+# -------------------------------------------------
+Write-Host "[INFO] Enforcing hardware security device requirement..." -ForegroundColor Yellow
+
+if (-not (Test-Path $RegPath)) {
+    New-Item -Path $RegPath -Force | Out-Null
+    Write-Host "[INFO] Registry path created." -ForegroundColor Green
+}
+
+New-ItemProperty `
+    -Path $RegPath `
+    -Name $ValueName `
+    -PropertyType DWORD `
+    -Value $ValueData `
+    -Force | Out-Null
+
+Write-Host "[INFO] Registry value configured successfully." -ForegroundColor Green
+
+# -------------------------------------------------
+# Step 4: Validate configuration
+# -------------------------------------------------
+$UpdatedValue = Get-ItemProperty -Path $RegPath -Name $ValueName -ErrorAction SilentlyContinue
+
+Write-Host "`n[INFO] Validation result:" -ForegroundColor Cyan
+Write-Host "RequireSecurityDevice = $($UpdatedValue.$ValueName)"
+
+if ($UpdatedValue.$ValueName -eq 1) {
+    Write-Host "`n✅ COMPLIANT: STIG WN11-CC-000255 successfully enforced." -ForegroundColor Green
+    Exit 0
+} else {
+    Write-Error "`n❌ NON-COMPLIANT: STIG WN11-CC-000255 not correctly configured."
+    Exit 2
+}
+
+Write-Host "[INFO] STIG WN11-CC-000255 remediation completed." -ForegroundColor Cyan
